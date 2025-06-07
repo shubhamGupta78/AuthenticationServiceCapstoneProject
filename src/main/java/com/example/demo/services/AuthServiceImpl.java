@@ -1,6 +1,8 @@
 package com.example.demo.services;
 
+import com.example.demo.Client.KafkaClient;
 import com.example.demo.configs.JwtConfigs;
+import com.example.demo.dtos.EmailDto;
 import com.example.demo.exceptions.InvalidLogoutRequest;
 import com.example.demo.exceptions.MaximumLoginReachedException;
 import com.example.demo.exceptions.UserAlreadyExist;
@@ -11,6 +13,8 @@ import com.example.demo.models.User;
 import com.example.demo.repositories.RoleRepository;
 import com.example.demo.repositories.SessionRepository;
 import com.example.demo.repositories.UserRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,23 +29,27 @@ import java.util.*;
 @Service
 public class AuthServiceImpl implements AuthService {
 
+    private ObjectMapper objectMapper;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final SessionRepository sessionRepository;
     private final BCryptPasswordEncoder bCryptPasswordEncoder;
     private JwtConfigs jwtConfigs;
+    private KafkaClient kafkaClient;
 
-    public AuthServiceImpl(UserRepository userRepository, RoleRepository roleRepository, SessionRepository sessionRepository, BCryptPasswordEncoder bCryptPasswordEncoder, JwtConfigs jwtConfigs) {
+    public AuthServiceImpl(UserRepository userRepository, RoleRepository roleRepository, SessionRepository sessionRepository, BCryptPasswordEncoder bCryptPasswordEncoder, JwtConfigs jwtConfigs, KafkaClient kafkaClient, ObjectMapper objectMapper) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.sessionRepository = sessionRepository;
         this.bCryptPasswordEncoder = bCryptPasswordEncoder;
         this.jwtConfigs = jwtConfigs;
+        this.kafkaClient = kafkaClient;
+        this.objectMapper = objectMapper;
 
     }
 
     @Override
-    public User CreateUser(User user) throws UserAlreadyExist {
+    public User CreateUser(User user) throws UserAlreadyExist, JsonProcessingException {
 
         Optional<User> optionalUser = userRepository.findByEmail(user.getEmail());
         if (optionalUser.isPresent()) {
@@ -49,6 +57,16 @@ public class AuthServiceImpl implements AuthService {
         }
         String hashedPassword = bCryptPasswordEncoder.encode(user.getPassword());
         user.setPassword(hashedPassword);
+
+        EmailDto emailDto = new EmailDto();
+        emailDto.setFrom("shubhamgupta746690@gmail.com");
+        emailDto.setTo(user.getEmail());
+        emailDto.setSubject("User Registration successful");
+        emailDto.setBody("welcome to our authenication service");
+
+
+
+        kafkaClient.send("welcome_user",objectMapper.writeValueAsString(emailDto));
         return userRepository.save(user);
 
     }
